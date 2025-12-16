@@ -7,5 +7,24 @@
 html, body, #root {
   height: 100%;
 }
+/* html2canvas can't parse oklch() — force RGB colors inside export region */
+.export-safe,
+.export-safe * {
+  color: rgb(244, 244, 245) !important;              /* zinc-100 */
+  border-color: rgb(39, 39, 42) !important;          /* zinc-800 */
+}
+
+.export-safe {
+  background: rgb(24, 24, 27) !important;            /* zinc-900 */
+}
+
+/* common surfaces in your export node */
+.export-safe .bg-zinc-950\/40 { background: rgba(9, 9, 11, 0.4) !important; }
+.export-safe .bg-zinc-950 { background: rgb(9, 9, 11) !important; }
+.export-safe .bg-zinc-900 { background: rgb(24, 24, 27) !important; }
+.export-safe .bg-zinc-800\/60 { background: rgba(39, 39, 42, 0.6) !important; }
+.export-safe .text-zinc-500 { color: rgb(113, 113, 122) !important; }
+.export-safe .text-zinc-400 { color: rgb(161, 161, 170) !important; }
+.export-safe .text-white { color: rgb(255, 255, 255) !important; }
 
 

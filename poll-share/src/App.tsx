@@ -177,9 +177,18 @@ function InfoModal({
 
 export default function App() {
   // Info alert (versioned)
+  const [menuOpen, setMenuOpen] = React.useState(false);
   const [showInfo, setShowInfo] = React.useState(() => {
     return localStorage.getItem(ALERT_LS_KEY) !== "true";
   });
+
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Export target (chart area only)
   const exportRef = React.useRef<HTMLDivElement | null>(null);
@@ -275,28 +284,57 @@ export default function App() {
     setShowInfo(false);
   }, []);
 
-  const onExport = React.useCallback(async () => {
-    const node = exportRef.current;
-    if (!node) return;
+const onExport = React.useCallback(async () => {
+  const node = exportRef.current;
+  if (!node) {
+    console.warn("Export failed: exportRef is null");
+    return;
+  }
 
-    const html2canvas = (await import("html2canvas")).default;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let html2canvasMod: any;
+  try {
+    html2canvasMod = await import("html2canvas");
+  } catch (e) {
+    console.error("Export failed: could not import html2canvas", e);
+    alert("Export failed: html2canvas missing. Run `npm i html2canvas`.");
+    return;
+  }
 
-    const canvas = await html2canvas(node, {
-      backgroundColor: null,
-      scale: window.devicePixelRatio || 2,
-      useCORS: true,
-    });
+  const html2canvas = html2canvasMod.default;
 
-    const stamp = new Date()
-      .toISOString()
-      .replace(/[:.]/g, "-")
-      .slice(0, 19);
+  const canvas = await html2canvas(node, {
+    backgroundColor: null, // keeps the dark UI vibe
+    scale: Math.max(2, window.devicePixelRatio || 2),
+    useCORS: true,
+  });
 
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const filename = `poll-share-${stamp}.png`;
+
+  // Blob download is more reliable than dataURL downloads (esp. Safari)
+  canvas.toBlob((blob: Blob | null) => {
+    if (!blob) return;
+
+    const url = URL.createObjectURL(blob);
+
+    // Safari fallback: if download attr is ignored, open the image in a new tab
     const a = document.createElement("a");
-    a.href = canvas.toDataURL("image/png");
-    a.download = `poll-share-${stamp}.png`;
+    a.href = url;
+    a.download = filename;
+
+    document.body.appendChild(a);
     a.click();
-  }, []);
+    a.remove();
+
+    // If Safari ignored download, user will still get something by opening it
+    // (optional fallback; uncomment if you want)
+    // setTimeout(() => window.open(url, "_blank"), 200);
+
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }, "image/png");
+}, []);
+
 
   const maxFor = React.useCallback(
     (target: PartyKey) => {
@@ -395,7 +433,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+                <div className="hidden md:flex gap-2 shrink-0 flex-wrap justify-end">
                   <button
                     onClick={playGreeting}
                     className="rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
@@ -469,7 +507,81 @@ export default function App() {
                     Info
                   </button>
                 </div>
+                {/* Mobile controls */}
+                <div className="flex md:hidden items-center gap-2">
+                  <button
+                    onClick={() => setShowInfo(true)}
+                    className="rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
+                    title="How this works"
+                  >
+                    Info
+                  </button>
+
+                  <button
+                    onClick={() => setMenuOpen(true)}
+                    className="rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
+                    aria-label="Open menu"
+                  >
+                    ☰
+                  </button>
+                </div>
+
               </header>
+
+              {/* Mobile menu drawer */}
+{menuOpen && (
+  <div className="md:hidden fixed inset-0 z-90">
+    <button
+      className="absolute inset-0 bg-black/60"
+      onClick={() => setMenuOpen(false)}
+      aria-label="Close menu"
+    />
+
+    <div className="absolute right-0 top-0 h-full w-[320px] max-w-[85vw] bg-zinc-950 border-l border-zinc-800 p-4 overflow-y-auto">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-semibold text-white">Menu</div>
+        <button
+          onClick={() => setMenuOpen(false)}
+          className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-700"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        <button onClick={playGreeting} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Greeting</button>
+        <button onClick={resetAll} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Reset</button>
+        <button onClick={normalizeTo100} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Normalize</button>
+        <button onClick={snapshotBaseline} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Snapshot</button>
+
+        <button
+          onClick={() => setCompareOn((v) => !v)}
+          disabled={!baseline}
+          className={[
+            "w-full rounded-xl px-3 py-2 text-sm border",
+            baseline
+              ? compareOn
+                ? "bg-blue-600/30 border-blue-500/60 hover:bg-blue-600/40"
+                : "bg-zinc-800 hover:bg-zinc-700 border-zinc-700"
+              : "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed",
+          ].join(" ")}
+        >
+          Compare
+        </button>
+
+        {baseline && (
+          <button onClick={clearBaseline} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300">
+            Clear
+          </button>
+        )}
+
+        <button onClick={onExport} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Export</button>
+        <button onClick={() => setShowInfo(true)} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300">Info</button>
+      </div>
+    </div>
+  </div>
+)}
+
 
               {/* baseline label input */}
               <div className="flex items-center gap-2 flex-wrap">

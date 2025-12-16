@@ -8,8 +8,6 @@ type Party = {
   color: string; // Tailwind bg color class
 };
 
-
-
 const PARTIES: Party[] = [
   { key: "cpc", label: "CPC", color: "bg-blue-500" },
   { key: "lib", label: "LIB", color: "bg-red-500" },
@@ -22,9 +20,13 @@ const PARTIES: Party[] = [
 
 const LS_KEY = "poll-shares-v1";
 
-// ✅ NEW: baseline snapshot keys
+// Baseline snapshot
 const LS_BASELINE_KEY = "poll-shares-baseline-v1";
 const LS_BASELINE_LABEL_KEY = "poll-shares-baseline-label-v1";
+
+// Info alert versioning
+const ALERT_VERSION = "v1";
+const ALERT_LS_KEY = `pollshare-alert-dismissed:${ALERT_VERSION}`;
 
 const ZERO: Record<PartyKey, number> = {
   cpc: 0,
@@ -37,11 +39,11 @@ const ZERO: Record<PartyKey, number> = {
 };
 
 const GRID_LINES = [25, 50, 75, 100] as const;
-const MARKER_TOLERANCE = 1; // glow when within ±1%
+const MARKER_TOLERANCE = 1;
 
 function clampFloat(n: number, min: number, max: number) {
   if (!Number.isFinite(n)) return min;
-  const v = Math.round(n * 10) / 10; // one decimal
+  const v = Math.round(n * 10) / 10;
   return Math.max(min, Math.min(max, v));
 }
 
@@ -69,11 +71,12 @@ function sanitizeLoaded(parsed: any): Record<PartyKey, number> {
   const total = sumShares(next);
   if (total <= 100) return next;
 
-  let overflow = total - 100;
+  // trim overflow from "other", then from the end
+  let overflow = clampFloat(total - 100, 0, 1000);
 
   const takeFromOther = Math.min(next.other, overflow);
-  next.other -= takeFromOther;
-  overflow -= takeFromOther;
+  next.other = clampFloat(next.other - takeFromOther, 0, 100);
+  overflow = clampFloat(overflow - takeFromOther, 0, 1000);
 
   for (let i = PARTIES.length - 1; i >= 0 && overflow > 0; i--) {
     const key = PARTIES[i].key;
@@ -89,20 +92,108 @@ function isNearMarker(value: number) {
   return GRID_LINES.some((g) => Math.abs(value - g) <= MARKER_TOLERANCE);
 }
 
+function InfoModal({
+  open,
+  onClose,
+  onDismissForever,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onDismissForever: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      <div className="relative w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-sm font-semibold text-white">Poll-Share Mixer</div>
+            <div className="mt-1 text-xs text-zinc-400">
+              Snapshot → Compare → Export
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-700"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-3 text-sm text-zinc-200">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3">
+            <div className="font-medium">How to use</div>
+            <ol className="mt-2 list-decimal space-y-2 pl-5 text-zinc-300">
+              <li>Use sliders to set the live poll shares.</li>
+              <li>
+                Press <span className="font-semibold text-white">Snapshot</span>{" "}
+                to lock a baseline (STAT A).
+              </li>
+              <li>
+                Press <span className="font-semibold text-white">Compare</span>{" "}
+                to show STAT B beside STAT A.
+              </li>
+              <li>
+                Press <span className="font-semibold text-white">Export</span>{" "}
+                to save a PNG for thumbnails/overlays.
+              </li>
+            </ol>
+          </div>
+
+          <div className="text-xs text-zinc-400">
+            Tip: When new features ship, we’ll bump the alert version and show a new
+            message automatically.
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm text-zinc-100 hover:bg-zinc-700"
+          >
+            Dismiss
+          </button>
+          <button
+            onClick={onDismissForever}
+            className="rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-100 hover:bg-zinc-900"
+            title="Don’t show this version again"
+          >
+            Dismiss forever
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  // Info alert (versioned)
+  const [showInfo, setShowInfo] = React.useState(() => {
+    return localStorage.getItem(ALERT_LS_KEY) !== "true";
+  });
+
+  // Export target (chart area only)
+  const exportRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Shares (live)
   const [shares, setShares] = React.useState<Record<PartyKey, number>>(() => {
     const saved = localStorage.getItem(LS_KEY);
     if (!saved) return { ...ZERO };
-
     try {
-      const parsed = JSON.parse(saved);
-      return sanitizeLoaded(parsed);
+      return sanitizeLoaded(JSON.parse(saved));
     } catch {
       return { ...ZERO };
     }
   });
 
-  // ✅ NEW: baseline + label + compare toggle
+  // Baseline snapshot
   const [baseline, setBaseline] = React.useState<Record<PartyKey, number> | null>(() => {
     const saved = localStorage.getItem(LS_BASELINE_KEY);
     if (!saved) return null;
@@ -121,46 +212,82 @@ export default function App() {
 
   const total = React.useMemo(() => sumShares(shares), [shares]);
 
+  // Persist live
   React.useEffect(() => {
     localStorage.setItem(LS_KEY, JSON.stringify(shares));
   }, [shares]);
 
+  // Persist baseline
   React.useEffect(() => {
     if (baseline) localStorage.setItem(LS_BASELINE_KEY, JSON.stringify(baseline));
     else localStorage.removeItem(LS_BASELINE_KEY);
   }, [baseline]);
 
+  // Persist baseline label
   React.useEffect(() => {
     localStorage.setItem(LS_BASELINE_LABEL_KEY, baselineLabel || "STAT");
   }, [baselineLabel]);
 
+  const dismissInfo = React.useCallback(() => setShowInfo(false), []);
+  const dismissInfoForever = React.useCallback(() => {
+    localStorage.setItem(ALERT_LS_KEY, "true");
+    setShowInfo(false);
+  }, []);
+
+  const onExport = React.useCallback(async () => {
+    const node = exportRef.current;
+    if (!node) return;
+
+    const html2canvas = (await import("html2canvas")).default;
+
+    const canvas = await html2canvas(node, {
+      backgroundColor: null,
+      scale: window.devicePixelRatio || 2,
+      useCORS: true,
+    });
+
+    const stamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .slice(0, 19);
+
+    const a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = `poll-share-${stamp}.png`;
+    a.click();
+  }, []);
+
   const maxFor = React.useCallback(
     (target: PartyKey) => {
       const others = sumOthers(shares, target);
-      return Math.max(0, clampFloat(100 - others, 0, 100));
+      return clampFloat(100 - others, 0, 100);
     },
     [shares]
   );
 
-  // Belt + suspenders setter (float)
+  // Setter (float, 0.1)
   const setParty = React.useCallback((target: PartyKey, raw: number) => {
     setShares((prev) => {
       const others = sumOthers(prev, target);
       const max = Math.max(0, 100 - others);
       const nextVal = clampFloat(raw, 0, max);
+
       const next = { ...prev, [target]: nextVal };
 
+      // Final safety: never overflow
       const t = sumShares(next);
       if (t > 100) {
         const overflow = t - 100;
         next[target] = clampFloat(next[target] - overflow, 0, 100);
       }
+
       return next;
     });
   }, []);
 
   const resetAll = React.useCallback(() => setShares({ ...ZERO }), []);
 
+  // Normalize button: scales current values so total becomes exactly 100%
   const normalizeTo100 = React.useCallback(() => {
     setShares((prev) => {
       const sum = sumShares(prev);
@@ -183,10 +310,9 @@ export default function App() {
     });
   }, []);
 
-  // ✅ NEW: snapshot + compare controls
   const snapshotBaseline = React.useCallback(() => {
     setBaseline(sanitizeLoaded(shares));
-    setCompareOn(true); // feels nice: snapshot -> instantly compare
+    setCompareOn(true);
   }, [shares]);
 
   const clearBaseline = React.useCallback(() => {
@@ -197,10 +323,11 @@ export default function App() {
   return (
     <div className="min-h-screen px-4 md:px-8 pt-0 bg-zinc-900 text-zinc-100">
       <div className="mx-auto max-w-5xl">
-        {/* Sticky top */}
+        {/* Sticky mixer */}
         <div className="sticky top-0 z-50 -mx-4 md:-mx-8 px-4 md:px-8 py-3 bg-zinc-950/80 backdrop-blur border-b border-zinc-800">
+          {/* Anchor for absolute stripe */}
           <div className="relative">
-            {/* Canada / stripe (linear, not “gradient-y”) */}
+            {/* Canada stripe */}
             <div className="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-red-600 via-white to-blue-600" />
 
             <div className="space-y-3 pt-2">
@@ -215,7 +342,6 @@ export default function App() {
                       The National Telegraph • Wyatt Claypool
                     </span>
 
-                    {/* baseline chip */}
                     {baseline ? (
                       <span className="text-[11px] md:text-xs px-2 py-1 rounded-full border border-zinc-700 bg-zinc-900/60 text-zinc-200">
                         Baseline: <strong className="ml-1">{baselineLabel || "STAT"}</strong>
@@ -239,7 +365,7 @@ export default function App() {
                   <button
                     onClick={normalizeTo100}
                     className="rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
-                    title="Scale current values so the total becomes 100%"
+                    title="Scale current values so the total becomes 100.0%"
                   >
                     Normalize
                   </button>
@@ -277,11 +403,27 @@ export default function App() {
                       Clear
                     </button>
                   )}
+
+                  <button
+                    onClick={onExport}
+                    className="rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
+                    title="Export chart as PNG"
+                  >
+                    Export
+                  </button>
+
+                  <button
+                    onClick={() => setShowInfo(true)}
+                    className="rounded-xl px-3 py-2 text-sm bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300"
+                    title="How this works"
+                  >
+                    Info
+                  </button>
                 </div>
               </header>
 
-              {/* baseline label input (compact) */}
-              <div className="flex items-center gap-2">
+              {/* baseline label input */}
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs text-zinc-500">Baseline label:</span>
                 <input
                   value={baselineLabel}
@@ -289,18 +431,18 @@ export default function App() {
                   placeholder="STAT"
                   className="h-8 w-36 rounded-lg border border-zinc-800 bg-zinc-900/60 px-2 text-sm text-zinc-100 placeholder:text-zinc-600 outline-none focus:ring-2 focus:ring-blue-500/40"
                 />
-                <span className="text-[11px] text-zinc-600">
-                  (Snapshot uses this label)
-                </span>
+                <span className="text-[11px] text-zinc-600">(Snapshot uses this label)</span>
               </div>
 
-              {/* Compact Total + Chart */}
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-2 md:p-3">
+              {/* Total + Chart (export this area only) */}
+              <div ref={exportRef} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-2 md:p-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-zinc-400">
                     Total{" "}
                     {compareOn && baseline ? (
-                      <span className="text-xs text-zinc-500">• comparing “{baselineLabel || "STAT"}” vs Live</span>
+                      <span className="text-xs text-zinc-500">
+                        • comparing “{baselineLabel || "STAT"}” vs Live
+                      </span>
                     ) : null}
                   </span>
 
@@ -333,6 +475,7 @@ export default function App() {
                       {PARTIES.map((p) => {
                         const live = shares[p.key];
                         const base = baseline?.[p.key] ?? 0;
+
                         const liveHit = isNearMarker(live);
                         const baseHit = isNearMarker(base);
 
@@ -341,10 +484,9 @@ export default function App() {
                         return (
                           <div key={p.key} className="min-w-0">
                             <div className="relative h-28 md:h-32 w-full rounded-xl bg-zinc-800/60 overflow-hidden border border-zinc-800 p-1">
-                              {/* Paired bars (Baseline + Live) */}
                               {showCompare ? (
                                 <div className="absolute inset-1 flex items-end gap-1">
-                                  {/* Baseline */}
+                                  {/* baseline */}
                                   <div className="relative flex-1 h-full">
                                     <div
                                       className={[
@@ -356,13 +498,15 @@ export default function App() {
                                       style={{
                                         height: `${base}%`,
                                         opacity: 0.35,
-                                        boxShadow: baseHit ? "0 0 18px rgba(255,255,255,0.18)" : undefined,
+                                        boxShadow: baseHit
+                                          ? "0 0 18px rgba(255,255,255,0.18)"
+                                          : undefined,
                                       }}
                                       title={`${baselineLabel || "STAT"} • ${p.label}: ${base.toFixed(1)}%`}
                                     />
                                   </div>
 
-                                  {/* Live */}
+                                  {/* live */}
                                   <div className="relative flex-1 h-full">
                                     <div
                                       className={[
@@ -373,14 +517,15 @@ export default function App() {
                                       ].join(" ")}
                                       style={{
                                         height: `${live}%`,
-                                        boxShadow: liveHit ? "0 0 18px rgba(255,255,255,0.25)" : undefined,
+                                        boxShadow: liveHit
+                                          ? "0 0 18px rgba(255,255,255,0.25)"
+                                          : undefined,
                                       }}
                                       title={`Live • ${p.label}: ${live.toFixed(1)}%`}
                                     />
                                   </div>
                                 </div>
                               ) : (
-                                // Single bar mode (Live only)
                                 <div
                                   className={[
                                     p.color,
@@ -389,8 +534,10 @@ export default function App() {
                                     liveHit ? "brightness-110" : "",
                                   ].join(" ")}
                                   style={{
-                                    height: `calc(${live}% - 0px)`,
-                                    boxShadow: liveHit ? "0 0 18px rgba(255,255,255,0.25)" : undefined,
+                                    height: `${live}%`,
+                                    boxShadow: liveHit
+                                      ? "0 0 18px rgba(255,255,255,0.25)"
+                                      : undefined,
                                   }}
                                   title={`${p.label}: ${live.toFixed(1)}%`}
                                 />
@@ -405,7 +552,7 @@ export default function App() {
                               {compareOn && baseline ? (
                                 <div className="text-[11px] tabular-nums text-zinc-400">
                                   <span className={baseHit ? "text-emerald-300" : ""}>
-                                    {(baseline?.[p.key] ?? 0).toFixed(1)}%
+                                    {base.toFixed(1)}%
                                   </span>
                                   <span className="mx-1 text-zinc-600">|</span>
                                   <span className={liveHit ? "text-emerald-300" : ""}>
@@ -413,7 +560,11 @@ export default function App() {
                                   </span>
                                 </div>
                               ) : (
-                                <div className={`text-[11px] tabular-nums ${liveHit ? "text-emerald-300" : "text-zinc-400"}`}>
+                                <div
+                                  className={`text-[11px] tabular-nums ${
+                                    liveHit ? "text-emerald-300" : "text-zinc-400"
+                                  }`}
+                                >
                                   {live.toFixed(1)}%
                                 </div>
                               )}
@@ -428,7 +579,6 @@ export default function App() {
                       <span>100%</span>
                     </div>
 
-                    {/* Compare legend */}
                     {compareOn && baseline ? (
                       <div className="mt-2 flex items-center justify-end gap-3 text-[11px] text-zinc-500">
                         <span className="flex items-center gap-2">
@@ -460,7 +610,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Sliders (page scrolls normally; mixer stays sticky) */}
+        {/* Sliders: page scrolls normally; mixer stays sticky */}
         <div className="mt-4 space-y-4 pb-10">
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 md:p-8 space-y-6">
             {PARTIES.map((p) => {
@@ -505,6 +655,8 @@ export default function App() {
           </footer>
         </div>
       </div>
+
+      <InfoModal open={showInfo} onClose={dismissInfo} onDismissForever={dismissInfoForever} />
     </div>
   );
 }

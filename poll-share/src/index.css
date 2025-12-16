@@ -1,0 +1,11 @@
+@import "tailwindcss";  
+/* App-wide dark background and smooth fonts */
+:root {
+  color-scheme: dark;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+

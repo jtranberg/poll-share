@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React from "react";
 
 type PartyKey = "cpc" | "lib" | "ndp" | "green" | "ppc" | "ind" | "other";
@@ -61,7 +62,7 @@ function sumOthers(s: Record<PartyKey, number>, target: PartyKey) {
   return total;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function sanitizeLoaded(parsed: any): Record<PartyKey, number> {
   const next: Record<PartyKey, number> = { ...ZERO };
 
@@ -284,56 +285,195 @@ export default function App() {
     setShowInfo(false);
   }, []);
 
-const onExport = React.useCallback(async () => {
-  const node = exportRef.current;
-  if (!node) {
-    console.warn("Export failed: exportRef is null");
-    return;
-  }
+  const onExport = React.useCallback(async () => {
+    const node = exportRef.current;
+    if (!node) return;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let html2canvasMod: any;
-  try {
-    html2canvasMod = await import("html2canvas");
-  } catch (e) {
-    console.error("Export failed: could not import html2canvas", e);
-    alert("Export failed: html2canvas missing. Run `npm i html2canvas`.");
-    return;
-  }
+    const html2canvasMod = await import("html2canvas");
+    const html2canvas = html2canvasMod.default;
 
-  const html2canvas = html2canvasMod.default;
+    // lock capture size to the export node
+    const rect = node.getBoundingClientRect();
+    const width = Math.ceil(rect.width);
+    const height = Math.ceil(rect.height);
 
-  const canvas = await html2canvas(node, {
-    backgroundColor: null, // keeps the dark UI vibe
-    scale: Math.max(2, window.devicePixelRatio || 2),
-    useCORS: true,
-  });
+    const canvas = await html2canvas(node, {
+      backgroundColor: "#18181b",
+      scale: Math.max(2, window.devicePixelRatio || 2),
+      useCORS: true,
+      width,
+      height,
 
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const filename = `poll-share-${stamp}.png`;
+      onclone: (doc: Document) => {
+        // 1) Disable stylesheets (removes oklch)
+        Array.from(doc.styleSheets).forEach((ss) => {
+          try {
+            (ss as CSSStyleSheet).disabled = true;
+          } catch {
+            // ignore
+          }
+        });
 
-  // Blob download is more reliable than dataURL downloads (esp. Safari)
-  canvas.toBlob((blob: Blob | null) => {
-    if (!blob) return;
+        // 2) Force base RGB on html/body
+        const html = doc.documentElement as HTMLElement;
+        const body = doc.body as HTMLElement;
+        html.style.background = "rgb(24,24,27)";
+        body.style.background = "rgb(24,24,27)";
+        body.style.color = "rgb(244,244,245)";
+        body.style.margin = "0";
 
-    const url = URL.createObjectURL(blob);
+        // 3) Restore JUST the utilities used inside export-root
+        const style = doc.createElement("style");
+        style.textContent = `
+        /* sizing */
+        #export-root{ box-sizing:border-box; width:${width}px; font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+        #export-root, #export-root *{ box-sizing:border-box; }
 
-    // Safari fallback: if download attr is ignored, open the image in a new tab
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
+        /* layout utils */
+        .relative{position:relative;}
+        .absolute{position:absolute;}
+        .pointer-events-none{pointer-events:none;}
 
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+        .inset-0{top:0;right:0;bottom:0;left:0;}
+        .inset-1{top:.25rem;right:.25rem;bottom:.25rem;left:.25rem;}
 
-    // If Safari ignored download, user will still get something by opening it
-    // (optional fallback; uncomment if you want)
-    // setTimeout(() => window.open(url, "_blank"), 200);
+        .top-0{top:0;}
+        .bottom-0{bottom:0;}
+        .bottom-1{bottom:.25rem;}
+        .bottom-6{bottom:1.5rem;}
+        .left-0{left:0;}
+        .left-1{left:.25rem;}
+        .right-0{right:0;}
+        .right-1{right:.25rem;}
+        .-top-2{top:-.5rem;}
 
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
-  }, "image/png");
-}, []);
+        .w-full{width:100%;}
+        .h-full{height:100%;}
+        .h-28{height:7rem;}
+        .h-32{height:8rem;}
+        .md\\:h-32{height:8rem;}
+        .overflow-hidden{overflow:hidden;}
+
+        .flex{display:flex;}
+        .items-center{align-items:center;}
+        .items-end{align-items:flex-end;}
+        .justify-between{justify-content:space-between;}
+        .justify-end{justify-content:flex-end;}
+        .gap-1{gap:.25rem;}
+        .gap-2{gap:.5rem;}
+        .gap-3{gap:.75rem;}
+        .flex-1{flex:1 1 0%;}
+
+        .grid{display:grid;}
+        .grid-cols-7{grid-template-columns:repeat(7,minmax(0,1fr));}
+        .min-w-0{min-width:0;}
+
+        /* spacing */
+        .p-1{padding:.25rem;}
+        .p-2{padding:.5rem;}
+        .p-3{padding:.75rem;}
+        .mt-1{margin-top:.25rem;}
+        .mt-2{margin-top:.5rem;}
+        .mt-3{margin-top:.75rem;}
+        .mx-1{margin-left:.25rem;margin-right:.25rem;}
+
+        /* typography */
+        .text-sm{font-size:.875rem; line-height:1.25rem;}
+        .text-xs{font-size:.75rem; line-height:1rem;}
+        .text-\\[10px\\]{font-size:10px; line-height:1rem;}
+        .text-\\[11px\\]{font-size:11px; line-height:1rem;}
+
+        .font-semibold{font-weight:600;}
+        .font-medium{font-weight:500;}
+        .tabular-nums{font-variant-numeric:tabular-nums;}
+        .truncate{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+        .text-center{text-align:center;}
+
+        /* borders / radius */
+        .border{border-width:1px; border-style:solid;}
+        .border-t{border-top-width:1px; border-top-style:solid;}
+        .rounded-xl{border-radius:.75rem;}
+        .rounded-2xl{border-radius:1rem;}
+        .rounded-md{border-radius:.375rem;}
+
+        .pr-6{padding-right:1.5rem;}
+
+
+        /* ---- RGB “export-safe” colors (no oklch) ---- */
+        /* force text/border everywhere, but DON'T flatten bg on .bg-* (so party colors survive) */
+        #export-root, #export-root *{
+          color: rgb(244,244,245) !important;
+          border-color: rgb(39,39,42) !important;
+          box-shadow:none !important;
+          text-shadow:none !important;
+          filter:none !important;
+          backdrop-filter:none !important;
+          background-image:none !important;
+        }
+        #export-root,
+        #export-root *:not([class*="bg-"]) {
+          background-color: rgb(24,24,27) !important;
+        }
+
+        /* common surfaces you use */
+        #export-root .bg-zinc-950\\/40{background:rgba(9,9,11,.4)!important;}
+        #export-root .bg-zinc-800\\/60{background:rgba(39,39,42,.6)!important;}
+
+        /* restore party bar colors */
+       #export-root .bg-blue-500{background-color:rgb(59,130,246)!important; background:rgb(59,130,246)!important;}
+#export-root .bg-red-500{background-color:rgb(239,68,68)!important; background:rgb(239,68,68)!important;}
+#export-root .bg-orange-500{background-color:rgb(249,115,22)!important; background:rgb(249,115,22)!important;}
+#export-root .bg-emerald-500{background-color:rgb(16,185,129)!important; background:rgb(16,185,129)!important;}
+#export-root .bg-purple-500{background-color:rgb(168,85,247)!important; background:rgb(168,85,247)!important;}
+#export-root .bg-slate-500{background-color:rgb(100,116,139)!important; background:rgb(100,116,139)!important;}
+#export-root .bg-zinc-600{background-color:rgb(82,82,91)!important; background:rgb(82,82,91)!important;}
+
+        /* missing positioning helpers used by inset-x-0 */
+.inset-x-0{left:0;right:0;}
+.inset-y-0{top:0;bottom:0;}
+
+/* spacing helpers your markup uses */
+.mb-3{margin-bottom:.75rem;}
+.flex-col{flex-direction:column;}
+.flex-wrap{flex-wrap:wrap;}
+.gap-x-4{column-gap:1rem;}
+.gap-y-2{row-gap:.5rem;}
+
+/* little blocks in legend */
+.inline-block{display:inline-block;}
+.h-2{height:.5rem;}
+.w-2{width:.5rem;}
+.h-2.5{height:.625rem;}
+.w-2.5{width:.625rem;}
+
+/* responsive typography helpers */
+.md\\:text-xs{font-size:.75rem; line-height:1rem;}
+.md\\:text-sm{font-size:.875rem; line-height:1.25rem;}
+
+/* give the bars row some breathing room (even if JSX doesn't have mb-3) */
+#export-root .grid.grid-cols-7{ margin-bottom:.75rem; }
+
+      `;
+        doc.head.appendChild(style);
+      },
+    });
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const filename = `poll-share-${stamp}.png`;
+
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    }, "image/png");
+  }, []);
+
 
 
   const maxFor = React.useCallback(
@@ -405,7 +545,7 @@ const onExport = React.useCallback(async () => {
         {/* Sticky mixer */}
         <div className="sticky top-0 z-50 -mx-4 md:-mx-8 px-4 md:px-8 py-3 bg-zinc-950/80 backdrop-blur border-b border-zinc-800">
           {/* Anchor for absolute stripe */}
-          <div className="relative">
+          <div className="relative ">
             {/* Canada stripe */}
             <div className="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-red-600 via-white to-blue-600" />
 
@@ -529,58 +669,58 @@ const onExport = React.useCallback(async () => {
               </header>
 
               {/* Mobile menu drawer */}
-{menuOpen && (
-  <div className="md:hidden fixed inset-0 z-90">
-    <button
-      className="absolute inset-0 bg-black/60"
-      onClick={() => setMenuOpen(false)}
-      aria-label="Close menu"
-    />
+              {menuOpen && (
+                <div className="md:hidden fixed inset-0 z-90">
+                  <button
+                    className="absolute inset-0 bg-black/60"
+                    onClick={() => setMenuOpen(false)}
+                    aria-label="Close menu"
+                  />
 
-    <div className="absolute right-0 top-0 h-full w-[320px] max-w-[85vw] bg-zinc-950 border-l border-zinc-800 p-4 overflow-y-auto">
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold text-white">Menu</div>
-        <button
-          onClick={() => setMenuOpen(false)}
-          className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-700"
-        >
-          ✕
-        </button>
-      </div>
+                  <div className="absolute right-0 top-0 h-full w-[320px] max-w-[85vw] bg-zinc-950 border-l border-zinc-800 p-4 overflow-y-auto">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-semibold text-white">Menu</div>
+                      <button
+                        onClick={() => setMenuOpen(false)}
+                        className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-700"
+                      >
+                        ✕
+                      </button>
+                    </div>
 
-      <div className="mt-4 space-y-2">
-        <button onClick={playGreeting} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Greeting</button>
-        <button onClick={resetAll} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Reset</button>
-        <button onClick={normalizeTo100} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Normalize</button>
-        <button onClick={snapshotBaseline} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Snapshot</button>
+                    <div className="mt-4 space-y-2">
+                      <button onClick={playGreeting} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Greeting</button>
+                      <button onClick={resetAll} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Reset</button>
+                      <button onClick={normalizeTo100} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Normalize</button>
+                      <button onClick={snapshotBaseline} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Snapshot</button>
 
-        <button
-          onClick={() => setCompareOn((v) => !v)}
-          disabled={!baseline}
-          className={[
-            "w-full rounded-xl px-3 py-2 text-sm border",
-            baseline
-              ? compareOn
-                ? "bg-blue-600/30 border-blue-500/60 hover:bg-blue-600/40"
-                : "bg-zinc-800 hover:bg-zinc-700 border-zinc-700"
-              : "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed",
-          ].join(" ")}
-        >
-          Compare
-        </button>
+                      <button
+                        onClick={() => setCompareOn((v) => !v)}
+                        disabled={!baseline}
+                        className={[
+                          "w-full rounded-xl px-3 py-2 text-sm border",
+                          baseline
+                            ? compareOn
+                              ? "bg-blue-600/30 border-blue-500/60 hover:bg-blue-600/40"
+                              : "bg-zinc-800 hover:bg-zinc-700 border-zinc-700"
+                            : "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed",
+                        ].join(" ")}
+                      >
+                        Compare
+                      </button>
 
-        {baseline && (
-          <button onClick={clearBaseline} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300">
-            Clear
-          </button>
-        )}
+                      {baseline && (
+                        <button onClick={clearBaseline} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300">
+                          Clear
+                        </button>
+                      )}
 
-        <button onClick={onExport} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Export</button>
-        <button onClick={() => setShowInfo(true)} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300">Info</button>
-      </div>
-    </div>
-  </div>
-)}
+                      <button onClick={onExport} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700">Export</button>
+                      <button onClick={() => setShowInfo(true)} className="w-full rounded-xl px-3 py-2 text-sm bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300">Info</button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
 
               {/* baseline label input */}
@@ -596,7 +736,11 @@ const onExport = React.useCallback(async () => {
               </div>
 
               {/* Total + Chart (export this area only) */}
-              <div ref={exportRef} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-2 md:p-3">
+              <div
+                id="export-root"
+                ref={exportRef}
+                className="export-safe rounded-2xl border border-zinc-800 bg-zinc-900 p-2 md:p-3"
+              >
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-zinc-400">
                     Total{" "}
@@ -615,7 +759,7 @@ const onExport = React.useCallback(async () => {
 
                 {/* Chart */}
                 <div className="mt-2 rounded-xl border border-zinc-800 bg-zinc-950/40 p-2">
-                  <div className="relative">
+                  <div className="relative pr-6">
                     {/* gridlines */}
                     <div className="pointer-events-none absolute inset-x-0 top-0 bottom-6">
                       {GRID_LINES.map((g) => (
@@ -624,9 +768,9 @@ const onExport = React.useCallback(async () => {
                           className="absolute left-0 right-0 border-t border-zinc-700/40"
                           style={{ bottom: `${g}%` }}
                         >
-                          <span className="absolute -top-2 right-0 text-[10px] text-zinc-500">
-                            {g}%
-                          </span>
+                          <span className="gridline-label absolute -top-2 right-0 text-[10px] text-zinc-500">
+  {g}%
+</span>
                         </div>
                       ))}
                     </div>

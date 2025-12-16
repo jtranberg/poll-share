@@ -47,6 +47,8 @@ function clampFloat(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
 }
 
+
+
 function sumShares(s: Record<PartyKey, number>) {
   return (Object.values(s) as number[]).reduce((a, b) => a + b, 0);
 }
@@ -192,6 +194,45 @@ export default function App() {
       return { ...ZERO };
     }
   });
+  // Greeting (4s)
+  const greetingAudioRef = React.useRef<HTMLAudioElement | null>(null);
+  const greetTimerRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    // preload once
+    greetingAudioRef.current = new Audio("/audio/greeting.mp3");
+    greetingAudioRef.current.preload = "auto";
+
+    return () => {
+      if (greetTimerRef.current) window.clearTimeout(greetTimerRef.current);
+      greetingAudioRef.current?.pause();
+      greetingAudioRef.current = null;
+    };
+  }, []);
+
+  const playGreeting = React.useCallback(async () => {
+    const audio = greetingAudioRef.current;
+    if (!audio) return;
+
+    // stop any previous play
+    if (greetTimerRef.current) window.clearTimeout(greetTimerRef.current);
+    audio.pause();
+    audio.currentTime = 0;
+
+    try {
+      await audio.play();
+
+      // hard-stop at 4 seconds (even if the file is longer)
+      greetTimerRef.current = window.setTimeout(() => {
+        audio.pause();
+        audio.currentTime = 0;
+      }, 4000);
+    } catch {
+      // Most common cause: autoplay blocked if not triggered by a click/tap
+      console.warn("Audio play blocked. Tap the button to allow audio.");
+    }
+  }, []);
+
 
   // Baseline snapshot
   const [baseline, setBaseline] = React.useState<Record<PartyKey, number> | null>(() => {
@@ -355,6 +396,14 @@ export default function App() {
                 </div>
 
                 <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+                  <button
+                    onClick={playGreeting}
+                    className="rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
+                    title="Play greeting"
+                  >
+                    Greeting
+                  </button>
+
                   <button
                     onClick={resetAll}
                     className="rounded-xl px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
@@ -561,9 +610,8 @@ export default function App() {
                                 </div>
                               ) : (
                                 <div
-                                  className={`text-[11px] tabular-nums ${
-                                    liveHit ? "text-emerald-300" : "text-zinc-400"
-                                  }`}
+                                  className={`text-[11px] tabular-nums ${liveHit ? "text-emerald-300" : "text-zinc-400"
+                                    }`}
                                 >
                                   {live.toFixed(1)}%
                                 </div>

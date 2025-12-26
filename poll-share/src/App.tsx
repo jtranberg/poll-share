@@ -37,6 +37,9 @@ const ALERT_LS_KEY = `pollshare-alert-dismissed:${ALERT_VERSION}`;
 const GRID_LINES = [25, 50, 75, 100] as const;
 const MARKER_TOLERANCE = 1;
 
+// Baseline label placeholder/default (single source of truth)
+const BASELINE_LABEL_PLACEHOLDER = "LABEL";
+
 function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
@@ -266,10 +269,10 @@ function InfoModal({
             <ol className="ps-olist">
               <li>Use sliders to set the live values.</li>
               <li>
-                Press <strong>Snapshot</strong> to lock a baseline (STAT A).
+                Press <strong>Snapshot</strong> to lock a baseline (LABEL A).
               </li>
               <li>
-                Press <strong>Compare</strong> to show STAT B beside STAT A.
+                Press <strong>Compare</strong> to show LABEL B beside LABEL A.
               </li>
               <li>
                 Press <strong>Export</strong> to save a PNG for thumbnails/overlays.
@@ -498,16 +501,19 @@ export default function App() {
     else localStorage.removeItem(baselineKey(activePollId));
   }, [baseline, activePollId]);
 
+  // ----------------------------
+  // Baseline label (per poll) — DEFAULT + FALLBACK = LABEL
+  // ----------------------------
   const [baselineLabel, setBaselineLabel] = React.useState<string>(() => {
-    return localStorage.getItem(baselineLabelKey(activePollId)) || "STAT";
+    return localStorage.getItem(baselineLabelKey(activePollId)) || BASELINE_LABEL_PLACEHOLDER;
   });
 
   React.useEffect(() => {
-    setBaselineLabel(localStorage.getItem(baselineLabelKey(activePollId)) || "STAT");
+    setBaselineLabel(localStorage.getItem(baselineLabelKey(activePollId)) || BASELINE_LABEL_PLACEHOLDER);
   }, [activePollId]);
 
   React.useEffect(() => {
-    localStorage.setItem(baselineLabelKey(activePollId), baselineLabel || "STAT");
+    localStorage.setItem(baselineLabelKey(activePollId), baselineLabel || BASELINE_LABEL_PLACEHOLDER);
   }, [baselineLabel, activePollId]);
 
   const [compareOn, setCompareOn] = React.useState(false);
@@ -658,7 +664,7 @@ export default function App() {
     // initialize storage for new poll
     localStorage.setItem(sharesKey(poll.id), JSON.stringify(buildZero(poll.categories)));
     localStorage.removeItem(baselineKey(poll.id));
-    localStorage.setItem(baselineLabelKey(poll.id), "STAT");
+    localStorage.setItem(baselineLabelKey(poll.id), BASELINE_LABEL_PLACEHOLDER);
 
     // reset draft + close panel
     setDraftTitle("");
@@ -698,8 +704,6 @@ export default function App() {
                         LIVE
                       </span>
                       Subs: <strong className="ps-pillStrong">{formatCompact(subs)}</strong>
-
-
                     </span>
                   ) : subsError ? (
                     <span className="ps-pill ps-pillEmpty ps-subsPill" title={subsError}>
@@ -712,7 +716,8 @@ export default function App() {
                   {/* Baseline */}
                   {baseline ? (
                     <span className="ps-pill">
-                      Baseline: <strong className="ps-pillStrong">{baselineLabel || "STAT"}</strong>
+                      Baseline:{" "}
+                      <strong className="ps-pillStrong">{baselineLabel || BASELINE_LABEL_PLACEHOLDER}</strong>
                     </span>
                   ) : (
                     <span className="ps-pill ps-pillEmpty">No baseline saved</span>
@@ -722,7 +727,12 @@ export default function App() {
 
               {/* Desktop controls */}
               <div className="ps-controls ps-desktopOnly">
-                <select className="ps-select" value={activePollId} onChange={(e) => setActivePollId(e.target.value)} title="Select poll">
+                <select
+                  className="ps-select"
+                  value={activePollId}
+                  onChange={(e) => setActivePollId(e.target.value)}
+                  title="Select poll"
+                >
                   {polls.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.title}
@@ -846,7 +856,11 @@ export default function App() {
                       onClick={() =>
                         setDraftCats((prev) => [
                           ...prev,
-                          { id: uid(), label: `Option ${prev.length + 1}`, color: FALLBACK_COLORS[prev.length % FALLBACK_COLORS.length] },
+                          {
+                            id: uid(),
+                            label: `Option ${prev.length + 1}`,
+                            color: FALLBACK_COLORS[prev.length % FALLBACK_COLORS.length],
+                          },
                         ])
                       }
                     >
@@ -892,7 +906,12 @@ export default function App() {
                   </div>
 
                   <div className="ps-drawerButtons">
-                    <select className="ps-select ps-wFull" value={activePollId} onChange={(e) => setActivePollId(e.target.value)} title="Select poll">
+                    <select
+                      className="ps-select ps-wFull"
+                      value={activePollId}
+                      onChange={(e) => setActivePollId(e.target.value)}
+                      title="Select poll"
+                    >
                       {polls.map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.title}
@@ -951,7 +970,12 @@ export default function App() {
             {/* baseline label input */}
             <div className="ps-baselineRow">
               <span className="ps-baselineLabel">Baseline label:</span>
-              <input value={baselineLabel} onChange={(e) => setBaselineLabel(e.target.value)} placeholder="STAT" className="ps-input" />
+              <input
+                value={baselineLabel}
+                onChange={(e) => setBaselineLabel(e.target.value)}
+                placeholder={BASELINE_LABEL_PLACEHOLDER}
+                className="ps-input"
+              />
               <span className="ps-baselineHint">(Snapshot uses this label)</span>
             </div>
 
@@ -960,7 +984,9 @@ export default function App() {
               <div className="ps-exportTop">
                 <span className="ps-muted">
                   Total{" "}
-                  {compareOn && baseline ? <span className="ps-subtle">• comparing “{baselineLabel || "STAT"}” vs Live</span> : null}
+                  {compareOn && baseline ? (
+                    <span className="ps-subtle">• comparing “{baselineLabel || BASELINE_LABEL_PLACEHOLDER}” vs Live</span>
+                  ) : null}
                 </span>
 
                 <span className={`ps-total ${total === 100 ? "ps-totalGood" : "ps-totalBad"}`}>
@@ -993,10 +1019,22 @@ export default function App() {
                             {showCompare ? (
                               <div className="ps-compare">
                                 <div className="ps-compareHalf">
-                                  <Bar kind="baseline" height={base} color={c.color} hit={baseHit} title={`${baselineLabel || "STAT"} • ${c.label}: ${base.toFixed(1)}%`} />
+                                  <Bar
+                                    kind="baseline"
+                                    height={base}
+                                    color={c.color}
+                                    hit={baseHit}
+                                    title={`${baselineLabel || BASELINE_LABEL_PLACEHOLDER} • ${c.label}: ${base.toFixed(1)}%`}
+                                  />
                                 </div>
                                 <div className="ps-compareHalf">
-                                  <Bar kind="live" height={live} color={c.color} hit={liveHit} title={`Live • ${c.label}: ${live.toFixed(1)}%`} />
+                                  <Bar
+                                    kind="live"
+                                    height={live}
+                                    color={c.color}
+                                    hit={liveHit}
+                                    title={`Live • ${c.label}: ${live.toFixed(1)}%`}
+                                  />
                                 </div>
                               </div>
                             ) : (
@@ -1031,7 +1069,7 @@ export default function App() {
                     <div className="ps-legendCompare">
                       <span className="ps-legendItem">
                         <span className="ps-legendSwatch ps-legendSwatchDim" />
-                        {baselineLabel || "STAT"}
+                        {baselineLabel || BASELINE_LABEL_PLACEHOLDER}
                       </span>
                       <span className="ps-legendItem">
                         <span className="ps-legendSwatch" />

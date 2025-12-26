@@ -712,7 +712,7 @@ export default function App() {
                   {/* Baseline */}
                   {baseline ? (
                     <span className="ps-pill">
-                      Baseline: <strong className="ps-pillStrong">{baselineLabel || "Title"}</strong>
+                      Baseline: <strong className="ps-pillStrong">{baselineLabel || "STAT"}</strong>
                     </span>
                   ) : (
                     <span className="ps-pill ps-pillEmpty">No baseline saved</span>
@@ -951,7 +951,7 @@ export default function App() {
             {/* baseline label input */}
             <div className="ps-baselineRow">
               <span className="ps-baselineLabel">Baseline label:</span>
-              <input value={baselineLabel} onChange={(e) => setBaselineLabel(e.target.value)} placeholder="STAT" className="ps-input" />
+              <input value={baselineLabel} onChange={(e) => setBaselineLabel(e.target.value)} placeholder="Label" className="ps-input" />
               <span className="ps-baselineHint">(Snapshot uses this label)</span>
             </div>
 

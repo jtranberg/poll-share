@@ -174,7 +174,6 @@ function useCssVars(ref: React.RefObject<HTMLElement>, vars: Record<string, stri
   }, [ref, vars]);
 }
 
-
 function Dot({ color }: { color: string }) {
   const r = React.useRef<HTMLSpanElement | null>(null);
   const c = safeColor(color);
@@ -184,7 +183,6 @@ function Dot({ color }: { color: string }) {
 
   return <span ref={r} className="ps-dot" />;
 }
-
 
 function Bar({
   kind,
@@ -225,7 +223,6 @@ function Bar({
 
   return <div ref={r} className={cls} title={title} />;
 }
-
 
 function InfoModal({
   open,
@@ -322,6 +319,40 @@ export default function App() {
   const activePoll = React.useMemo(() => {
     return polls.find((p) => p.id === activePollId) || DEFAULT_POLL;
   }, [polls, activePollId]);
+
+  // ----------------------------
+  // YouTube subs (Netlify function)
+  // ----------------------------
+  const [subs, setSubs] = React.useState<number | null>(null);
+  const [subsError, setSubsError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        setSubsError(null);
+        const r = await fetch("/.netlify/functions/youtube-subs?channelId=UCdlKQfnSA5TvtsxjWq7PGmw");
+        const data = await r.json();
+        if (!alive) return;
+
+        if (data?.ok && typeof data.subscriberCount === "number") {
+          setSubs(data.subscriberCount);
+        } else {
+          setSubs(null);
+          setSubsError(data?.error || "Could not load subscribers");
+        }
+      } catch (e: any) {
+        if (!alive) return;
+        setSubs(null);
+        setSubsError(e?.message || "Network error");
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // ----------------------------
   // Header UI controls
@@ -635,16 +666,36 @@ export default function App() {
                 </div>
 
                 <div className="ps-subrow">
-                  <span className="ps-muted">The National Telegraph • Wyatt Claypool</span>
+  <span className="ps-muted">The National Telegraph • Wyatt Claypool</span>
 
-                  {baseline ? (
-                    <span className="ps-pill">
-                      Baseline: <strong className="ps-pillStrong">{baselineLabel || "STAT"}</strong>
-                    </span>
-                  ) : (
-                    <span className="ps-pill ps-pillEmpty">No baseline saved</span>
-                  )}
-                </div>
+  {/* YouTube Subscribers */}
+  {typeof subs === "number" ? (
+    <span className="ps-pill ps-subsPill">
+      Subs: <strong className="ps-pillStrong">{subs.toLocaleString()}</strong>
+    </span>
+  ) : subsError ? (
+    <span
+      className="ps-pill ps-pillEmpty ps-subsPill"
+      title={subsError}
+    >
+      Subs unavailable
+    </span>
+  ) : (
+    <span className="ps-pill ps-pillEmpty ps-subsPill">
+      Loading subs…
+    </span>
+  )}
+
+  {/* Baseline */}
+  {baseline ? (
+    <span className="ps-pill">
+      Baseline: <strong className="ps-pillStrong">{baselineLabel || "STAT"}</strong>
+    </span>
+  ) : (
+    <span className="ps-pill ps-pillEmpty">No baseline saved</span>
+  )}
+</div>
+
               </div>
 
               {/* Desktop controls */}
@@ -837,10 +888,18 @@ export default function App() {
                       Create Poll
                     </button>
 
-                    <button onClick={playGreeting} className="ps-btn ps-wFull">Greeting</button>
-                    <button onClick={resetAll} className="ps-btn ps-wFull">Reset</button>
-                    <button onClick={normalizeTo100} className="ps-btn ps-wFull">Normalize</button>
-                    <button onClick={snapshotBaseline} className="ps-btn ps-wFull">Snapshot</button>
+                    <button onClick={playGreeting} className="ps-btn ps-wFull">
+                      Greeting
+                    </button>
+                    <button onClick={resetAll} className="ps-btn ps-wFull">
+                      Reset
+                    </button>
+                    <button onClick={normalizeTo100} className="ps-btn ps-wFull">
+                      Normalize
+                    </button>
+                    <button onClick={snapshotBaseline} className="ps-btn ps-wFull">
+                      Snapshot
+                    </button>
 
                     <button
                       onClick={() => setCompareOn((v) => !v)}
@@ -851,11 +910,17 @@ export default function App() {
                     </button>
 
                     {baseline && (
-                      <button onClick={clearBaseline} className="ps-btn ps-btnGhost ps-wFull">Clear</button>
+                      <button onClick={clearBaseline} className="ps-btn ps-btnGhost ps-wFull">
+                        Clear
+                      </button>
                     )}
 
-                    <button onClick={onExport} className="ps-btn ps-wFull">Export</button>
-                    <button onClick={() => setShowInfo(true)} className="ps-btn ps-btnGhost ps-wFull">Info</button>
+                    <button onClick={onExport} className="ps-btn ps-wFull">
+                      Export
+                    </button>
+                    <button onClick={() => setShowInfo(true)} className="ps-btn ps-btnGhost ps-wFull">
+                      Info
+                    </button>
                   </div>
                 </div>
               </div>
@@ -864,12 +929,7 @@ export default function App() {
             {/* baseline label input */}
             <div className="ps-baselineRow">
               <span className="ps-baselineLabel">Baseline label:</span>
-              <input
-                value={baselineLabel}
-                onChange={(e) => setBaselineLabel(e.target.value)}
-                placeholder="STAT"
-                className="ps-input"
-              />
+              <input value={baselineLabel} onChange={(e) => setBaselineLabel(e.target.value)} placeholder="STAT" className="ps-input" />
               <span className="ps-baselineHint">(Snapshot uses this label)</span>
             </div>
 
@@ -878,9 +938,7 @@ export default function App() {
               <div className="ps-exportTop">
                 <span className="ps-muted">
                   Total{" "}
-                  {compareOn && baseline ? (
-                    <span className="ps-subtle">• comparing “{baselineLabel || "STAT"}” vs Live</span>
-                  ) : null}
+                  {compareOn && baseline ? <span className="ps-subtle">• comparing “{baselineLabel || "STAT"}” vs Live</span> : null}
                 </span>
 
                 <span className={`ps-total ${total === 100 ? "ps-totalGood" : "ps-totalBad"}`}>
@@ -913,32 +971,14 @@ export default function App() {
                             {showCompare ? (
                               <div className="ps-compare">
                                 <div className="ps-compareHalf">
-                                  <Bar
-                                    kind="baseline"
-                                    height={base}
-                                    color={c.color}
-                                    hit={baseHit}
-                                    title={`${baselineLabel || "STAT"} • ${c.label}: ${base.toFixed(1)}%`}
-                                  />
+                                  <Bar kind="baseline" height={base} color={c.color} hit={baseHit} title={`${baselineLabel || "STAT"} • ${c.label}: ${base.toFixed(1)}%`} />
                                 </div>
                                 <div className="ps-compareHalf">
-                                  <Bar
-                                    kind="live"
-                                    height={live}
-                                    color={c.color}
-                                    hit={liveHit}
-                                    title={`Live • ${c.label}: ${live.toFixed(1)}%`}
-                                  />
+                                  <Bar kind="live" height={live} color={c.color} hit={liveHit} title={`Live • ${c.label}: ${live.toFixed(1)}%`} />
                                 </div>
                               </div>
                             ) : (
-                              <Bar
-                                kind="single"
-                                height={live}
-                                color={c.color}
-                                hit={liveHit}
-                                title={`${c.label}: ${live.toFixed(1)}%`}
-                              />
+                              <Bar kind="single" height={live} color={c.color} hit={liveHit} title={`${c.label}: ${live.toFixed(1)}%`} />
                             )}
                           </div>
 

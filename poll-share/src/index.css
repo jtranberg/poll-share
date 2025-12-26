@@ -537,3 +537,17 @@ body{
 .export-safe .ps-bar.ps-baseline{
   background: var(--ps-color-dim, rgba(100,116,139,0.35)) !important;
 }
+
+/* YouTube subs pill (no inline styles) */
+.ps-subsPill {
+  margin-left: 10px;
+}
+
+.ps-subsPillLoading {
+  opacity: 0.85;
+}
+
+.ps-subsPillError {
+  opacity: 0.9;
+}
+

@@ -951,7 +951,7 @@ export default function App() {
             {/* baseline label input */}
             <div className="ps-baselineRow">
               <span className="ps-baselineLabel">Baseline label:</span>
-              <input value={baselineLabel} onChange={(e) => setBaselineLabel(e.target.value)} placeholder="Label" className="ps-input" />
+              <input value={baselineLabel} onChange={(e) => setBaselineLabel(e.target.value)} placeholder="STAT" className="ps-input" />
               <span className="ps-baselineHint">(Snapshot uses this label)</span>
             </div>
 

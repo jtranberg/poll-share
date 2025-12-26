@@ -121,6 +121,16 @@ function isNearMarker(value: number) {
   return GRID_LINES.some((g) => Math.abs(value - g) <= MARKER_TOLERANCE);
 }
 
+// --------- NEW: formatting helpers for LIVE subs pill ----------
+function formatCompact(n: number) {
+  return n.toLocaleString();
+}
+
+function formatTime(ts: number) {
+  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+// --------------------------------------------------------------
+
 // Default poll (your Canada one)
 const DEFAULT_POLL: Poll = {
   id: "canada-default",
@@ -321,36 +331,46 @@ export default function App() {
   }, [polls, activePollId]);
 
   // ----------------------------
-  // YouTube subs (Netlify function)
+  // YouTube subs (Netlify function) + LIVE tag
   // ----------------------------
   const [subs, setSubs] = React.useState<number | null>(null);
   const [subsError, setSubsError] = React.useState<string | null>(null);
+  const [subsUpdatedAt, setSubsUpdatedAt] = React.useState<number | null>(null);
 
   React.useEffect(() => {
     let alive = true;
 
-    (async () => {
+    const load = async () => {
       try {
         setSubsError(null);
-        const r = await fetch("/.netlify/functions/youtube-subs?channelId=UCdlKQfnSA5TvtsxjWq7PGmw");
+        const r = await fetch("/.netlify/functions/youtube-subs?channelId=UCdlKQfnSA5TvtsxjWq7PGmw", {
+          cache: "no-store",
+        });
         const data = await r.json();
         if (!alive) return;
 
         if (data?.ok && typeof data.subscriberCount === "number") {
           setSubs(data.subscriberCount);
+          setSubsUpdatedAt(Date.now());
         } else {
           setSubs(null);
+          setSubsUpdatedAt(null);
           setSubsError(data?.error || "Could not load subscribers");
         }
       } catch (e: any) {
         if (!alive) return;
         setSubs(null);
+        setSubsUpdatedAt(null);
         setSubsError(e?.message || "Network error");
       }
-    })();
+    };
+
+    load();
+    const id = window.setInterval(load, 10 * 60 * 1000); // refresh every 10 minutes
 
     return () => {
       alive = false;
+      window.clearInterval(id);
     };
   }, []);
 
@@ -666,36 +686,38 @@ export default function App() {
                 </div>
 
                 <div className="ps-subrow">
-  <span className="ps-muted">The National Telegraph • Wyatt Claypool</span>
+                  <span className="ps-muted">The National Telegraph • Wyatt Claypool</span>
 
-  {/* YouTube Subscribers */}
-  {typeof subs === "number" ? (
-    <span className="ps-pill ps-subsPill">
-      Subs: <strong className="ps-pillStrong">{subs.toLocaleString()}</strong>
-    </span>
-  ) : subsError ? (
-    <span
-      className="ps-pill ps-pillEmpty ps-subsPill"
-      title={subsError}
-    >
-      Subs unavailable
-    </span>
-  ) : (
-    <span className="ps-pill ps-pillEmpty ps-subsPill">
-      Loading subs…
-    </span>
-  )}
+                  {/* YouTube Subscribers + LIVE tag */}
+                  {typeof subs === "number" ? (
+                    <span
+                      className="ps-pill ps-subsPill"
+                      title={subsUpdatedAt ? `Updated ${formatTime(subsUpdatedAt)}` : "Updated recently"}
+                    >
+                      <span className="ps-liveTag" aria-label="Live">
+                        LIVE
+                      </span>
+                      Subs: <strong className="ps-pillStrong">{formatCompact(subs)}</strong>
 
-  {/* Baseline */}
-  {baseline ? (
-    <span className="ps-pill">
-      Baseline: <strong className="ps-pillStrong">{baselineLabel || "STAT"}</strong>
-    </span>
-  ) : (
-    <span className="ps-pill ps-pillEmpty">No baseline saved</span>
-  )}
-</div>
 
+                    </span>
+                  ) : subsError ? (
+                    <span className="ps-pill ps-pillEmpty ps-subsPill" title={subsError}>
+                      Subs unavailable
+                    </span>
+                  ) : (
+                    <span className="ps-pill ps-pillEmpty ps-subsPill">Loading subs…</span>
+                  )}
+
+                  {/* Baseline */}
+                  {baseline ? (
+                    <span className="ps-pill">
+                      Baseline: <strong className="ps-pillStrong">{baselineLabel || "STAT"}</strong>
+                    </span>
+                  ) : (
+                    <span className="ps-pill ps-pillEmpty">No baseline saved</span>
+                  )}
+                </div>
               </div>
 
               {/* Desktop controls */}

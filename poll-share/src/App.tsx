@@ -712,7 +712,7 @@ export default function App() {
                   {/* Baseline */}
                   {baseline ? (
                     <span className="ps-pill">
-                      Baseline: <strong className="ps-pillStrong">{baselineLabel || "STAT"}</strong>
+                      Baseline: <strong className="ps-pillStrong">{baselineLabel || "Title"}</strong>
                     </span>
                   ) : (
                     <span className="ps-pill ps-pillEmpty">No baseline saved</span>
